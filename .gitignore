@@ -1,0 +1,17 @@
+﻿# build output / IDE junk
+*.class
+bin/
+out/
+.metadata/
+.recommenders/
+__pycache__/
+.venv/
+venv/
+*.asv
+# duplicates and archives
+* - Copy/
+*.zip
+# secrets
+.env
+# classmates' / team agents stay local
+custom/*.dlv

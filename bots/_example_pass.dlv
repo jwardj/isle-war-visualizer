@@ -1,0 +1,13 @@
+% Minimal valid Isle Wars agent: dumps all reinforcements on one territory,
+% never attacks or moves. Copy this file's shape to start a real agent.
+% (see README.md in this folder for the full predicate reference)
+
+% fortify: place every army from to_fortify(A) on the lowest-id territory we own.
+lowest_owned(I, T) :- my_id(I), T = #min{X : owner(X, I)}.
+fortify(T, A) :- phase(fortify), to_fortify(A), my_id(I), lowest_owned(I, T).
+
+% choose: always end the turn immediately.
+pass :- phase(choose).
+
+% conquer: left unhandled on purpose -- the engine safely moves everything
+% but one army into the conquered territory if we don't answer.

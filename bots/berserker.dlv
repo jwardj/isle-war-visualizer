@@ -1,0 +1,43 @@
+%
+%  BERSERKER  -  pure rush
+%  Attacks whenever it legally can, always picking the battle where it has
+%  the biggest army advantage. Piles every reinforcement onto its most
+%  pressured front. Never holds back.
+%
+
+% --- who owns what ---
+owned(T) :- owner(T, I), my_id(I).
+enemy(T) :- territory(T), not owned(T).
+border(T) :- owned(T), neighbor(T, E), enemy(E).
+has_border :- border(T).
+
+% ======================= FORTIFY =======================
+% score a border by total enemy armies pressing on it; reinforce the hottest.
+pscore(T, V) :- border(T), V = #sum{A, E : neighbor(T, E), enemy(E), armies_present(E, A)}.
+best(M)      :- M = #max{V : pscore(_, V)}.
+cand(T)      :- pscore(T, V), best(V).
+target(T)    :- T = #min{X : cand(X)}.
+target(T)    :- not has_border, T = #min{X : owned(X)}.   % fallback
+fortify(T, A) :- phase(fortify), to_fortify(A), target(T).
+
+% ======================= CHOOSE ========================
+% a legal attack: ours, >=2 armies, at least as many as the target.
+can_attack(MT, ET) :- owned(MT), enemy(ET), neighbor(MT, ET),
+                      armies_present(MT, MA), armies_present(ET, EA),
+                      MA >= 2, MA >= EA.
+attackable :- can_attack(_, _).
+
+{ attack(MT, ET) : can_attack(MT, ET) } <= 1 :- phase(choose).
+{ pass } :- phase(choose).
+
+% exactly one action; and never pass while an attack is on the table.
+:- #count{X, Y : attack(X, Y); X, Y, Z : move(X, Y, Z); A : pass, A = 1} != 1, phase(choose).
+:- phase(choose), attackable, pass.
+:- phase(choose), not attackable, not pass.
+
+% pick the most lopsided fight (maximise our armies minus theirs).
+:~ attack(MT, ET), armies_present(MT, MA), armies_present(ET, EA), W = EA - MA. [W@1, MT, ET]
+
+% ======================= CONQUER =======================
+% (left unhandled: the engine pushes everything but one army in -- exactly
+%  what a berserker wants.)

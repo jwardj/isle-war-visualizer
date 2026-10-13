@@ -1,0 +1,77 @@
+%
+%  OVERLORD  -  the strongest all-round agent
+%
+%  Strategy (why it wins games):
+%   * Reinforcements are CONCENTRATED on the one border that best opens a
+%     continent we already partly own -- continents pay bonuses, bonuses
+%     snowball.
+%   * It only takes SAFE, WINNING fights: it must have >=3 armies (so a lost
+%     roll never flips the source) AND strictly more than the defender. It
+%     refuses coin-flips, so it wins the battles it picks and keeps growing.
+%   * Among good fights it prefers the one that completes a continent, then
+%     the weakest defender, then the biggest edge.
+%   * After a conquest it pushes forward but keeps enough behind to hold the
+%     source against any OTHER neighbouring enemy.
+%
+
+% --- ownership ---
+owned(T) :- owner(T, I), my_id(I).
+enemy(T) :- territory(T), not owned(T).
+border(T) :- owned(T), neighbor(T, E), enemy(E).
+has_border :- border(T).
+
+% how many of each continent we already hold.
+cont_share(C, S) :- in_continent(_, C), S = #count{T : in_continent(T, C), owned(T)}.
+
+% ============================ FORTIFY ============================
+% opportunity: best continent-share reachable by attacking out of this border.
+opp(T, O) :- border(T),
+             O = #max{Q : neighbor(T, E), enemy(E), in_continent(E, C), cont_share(C, Q)}.
+% threat: enemy armies pressing on this border.
+thr(T, S) :- border(T), S = #sum{A, E : neighbor(T, E), enemy(E), armies_present(E, A)}.
+% combined score -- continent progress dominates, threat breaks ties.
+score(T, V) :- border(T), opp(T, O), thr(T, S), V = O * 100 + S.
+
+best_score(M) :- M = #max{V : score(_, V)}.
+fcand(T)      :- score(T, V), best_score(V).
+target(T)     :- T = #min{X : fcand(X)}.
+target(T)     :- not has_border, T = #min{X : owned(X)}.   % fallback
+fortify(T, A) :- phase(fortify), to_fortify(A), target(T).
+
+% ============================ CHOOSE ============================
+% a SAFE winning attack: at least 3 of ours (a loss can't flip us) and a
+% strict numerical edge over the defender.
+can_attack(MT, ET) :- owned(MT), enemy(ET), neighbor(MT, ET),
+                      armies_present(MT, MA), armies_present(ET, EA),
+                      MA >= 3, MA > EA.
+attackable :- can_attack(_, _).
+
+{ attack(MT, ET) : can_attack(MT, ET) } <= 1 :- phase(choose).
+{ pass } :- phase(choose).
+
+:- #count{X, Y : attack(X, Y); X, Y, Z : move(X, Y, Z); A : pass, A = 1} != 1, phase(choose).
+:- phase(choose), attackable, pass.            % never waste a winning attack
+:- phase(choose), not attackable, not pass.    % nothing safe -> end the turn
+
+% priority 1: push into the continent we are closest to completing.
+:~ attack(MT, ET), in_continent(ET, C), cont_share(C, S). [-S@4, MT, ET]
+% priority 2: among those, take the weakest defender (cheapest capture).
+:~ attack(MT, ET), armies_present(ET, EA). [EA@3, MT, ET]
+% priority 3: prefer the biggest army edge (safest).
+:~ attack(MT, ET), armies_present(MT, MA), armies_present(ET, EA), W = EA - MA. [W@2, MT, ET]
+
+% ============================ CONQUER ===========================
+% How many to keep home to hold the source against any OTHER bordering enemy.
+other_enemy(MT) :- conquered(MT, ET), neighbor(MT, X), enemy(X), X != ET.
+keep(MT, K) :- conquered(MT, ET), other_enemy(MT),
+               K = #max{A : neighbor(MT, X), enemy(X), X != ET, armies_present(X, A)}.
+keep(MT, 0) :- conquered(MT, ET), not other_enemy(MT).
+
+% If there's a real threat at home, keep K back and push the rest forward...
+move(MT, ET, A) :- phase(conquer), conquered(MT, ET), armies_present(MT, N),
+                   keep(MT, K), K >= 1, A = N - K, A >= 1.
+% ...but if keeping K would leave nothing to advance, send a single army.
+move(MT, ET, 1) :- phase(conquer), conquered(MT, ET), armies_present(MT, N),
+                   keep(MT, K), K >= 1, N - K < 1.
+% No other threat at home (K = 0): say nothing -> the engine advances all but
+% one, which is the right aggressive default here.

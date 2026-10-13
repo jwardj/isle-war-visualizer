@@ -1,0 +1,2 @@
+pygame>=2.5
+embasp-python>=8.1

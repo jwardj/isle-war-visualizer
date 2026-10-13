@@ -1,0 +1,42 @@
+%
+%  LANDGRABBER  -  greedy expansion
+%  Wants raw territory count. Always swings at the WEAKEST enemy it can
+%  reach (cheapest captures first), preferring to strike from its biggest
+%  stack. Reinforces the border that touches the most enemies so it always
+%  has somewhere new to expand.
+%
+
+owned(T) :- owner(T, I), my_id(I).
+enemy(T) :- territory(T), not owned(T).
+border(T) :- owned(T), neighbor(T, E), enemy(E).
+has_border :- border(T).
+
+% ======================= FORTIFY =======================
+% reinforce the border touching the most enemy territories (widest frontier).
+pscore(T, V) :- border(T), V = #count{E : neighbor(T, E), enemy(E)}.
+best(M)      :- M = #max{V : pscore(_, V)}.
+cand(T)      :- pscore(T, V), best(V).
+target(T)    :- T = #min{X : cand(X)}.
+target(T)    :- not has_border, T = #min{X : owned(X)}.
+fortify(T, A) :- phase(fortify), to_fortify(A), target(T).
+
+% ======================= CHOOSE ========================
+can_attack(MT, ET) :- owned(MT), enemy(ET), neighbor(MT, ET),
+                      armies_present(MT, MA), armies_present(ET, EA),
+                      MA >= 2, MA >= EA.
+attackable :- can_attack(_, _).
+
+{ attack(MT, ET) : can_attack(MT, ET) } <= 1 :- phase(choose).
+{ pass } :- phase(choose).
+
+:- #count{X, Y : attack(X, Y); X, Y, Z : move(X, Y, Z); A : pass, A = 1} != 1, phase(choose).
+:- phase(choose), attackable, pass.
+:- phase(choose), not attackable, not pass.
+
+% primary: hit the weakest defender (cheapest land grab).
+:~ attack(MT, ET), armies_present(ET, EA). [EA@2, MT, ET]
+% tie-break: do it from our largest stack for the best odds.
+:~ attack(MT, ET), armies_present(MT, MA). [-MA@1, MT, ET]
+
+% ======================= CONQUER =======================
+% (unhandled -> engine default.)
